@@ -1,0 +1,18 @@
+{
+  "model": "openai/clip-vit-base-patch32",
+  "classes": [
+    "person",
+    "car",
+    "bike",
+    "truck"
+  ],
+  "max_per_class_per_domain": 150,
+  "n_total_crops": 1200,
+  "conditions": [
+    "bare",
+    "generic",
+    "domain_aware",
+    "domain_aware_ensemble"
+  ],
+  "seed": 42
+}
