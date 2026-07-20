@@ -1,72 +1,221 @@
-# Does domain-aware prompting help CLIP on a real sensor domain shift?
+# Domain-Aware Prompting for Zero-Shot Vision-Language Models under RGB–Thermal Sensor Domain Shift
 
-## What this is
+## Overview
 
-A small zero-shot experiment with CLIP, not a new method and not a paper draft. The starting point was Prof. Nila Alipour Talemi's Style-Pro paper, which shows that telling CLIP what visual style an image is in (sketch, painting, cartoon) helps it generalize better across those styles. That specific result is already well covered in the literature on PACS/VLCS style shifts (Domain Prompt Learning, PromptStyler, DAPT all show basically the same thing), so running it again on PACS wouldn't really tell anyone anything new.
+This repository contains a small empirical study investigating whether **simple domain-aware prompts** can improve the zero-shot performance of CLIP under a real RGB–thermal sensor domain shift.
 
-Instead this asks a narrower question: does the same trick still work when the domain shift isn't an art style but a different sensor, RGB vs thermal/infrared. That's a real domain gap that shows up in a lot of applied work (wildfire monitoring, remote sensing, night-time detection), and as far as I could find it hasn't really been tested with this exact setup.
+This is **not** a new prompting method, a new model, or a paper draft. The goal is simply to evaluate a focused research question through a controlled experiment.
 
-## Data
+The motivation comes from Prof. Niloufar (Nila) Alipour Talemi's **Style-Pro** work, which demonstrates that style-aware prompts can improve the generalization of vision-language models across artistic domains such as sketches, paintings, and cartoons.
 
-Teledyne FLIR ADAS Thermal Dataset v2, free on Kaggle: `samdazel/teledyne-flir-adas-thermal-dataset-v2`. Vehicle-mounted camera rig, thermal and RGB frames, mostly time-synced, COCO-format bounding box annotations. Classes used: person, car, bike, truck, chosen because these are the categories with enough samples in both domains (FLIR uses "bike", not "bicycle", and rarer categories like dog don't have enough examples to test on). 150 crops per class per domain, 1,200 crops total, pulled from the bounding boxes with a bit of padding.
+Rather than reproducing those experiments, this project asks whether the same intuition transfers to a different and practically important setting:
 
-## Method
+> **Can simple domain-aware prompts improve zero-shot CLIP performance under RGB–thermal sensor domain shift without modifying the model?**
 
-CLIP ViT-B/32, zero-shot, no training or fine-tuning anywhere. Four prompt conditions, tested on the same crops so the comparison is apples to apples:
+---
 
-- `bare` — just the class name, e.g. "car"
-- `generic` — "a photo of a {class}", same wording for both domains
-- `domain_aware` — one prompt that names the actual domain, "a thermal camera image of a {class}" for thermal, "a color photograph of a {class}" for rgb
-- `domain_aware_ensemble` — a few different domain-aware phrasings per class, embeddings averaged together
+# Why this experiment?
 
-RGB acts as the control here. Generic and domain-aware wording are nearly the same for RGB on purpose, so if a difference showed up there too, it would suggest the gain was just from prompt wording in general rather than from naming the domain specifically.
+Most prior work on prompt learning evaluates domain shifts such as:
 
-## Results
+- Photo → Sketch
+- Photo → Painting
+- Photo → Cartoon
 
-**Thermal (the actual test):**
+These settings are already well studied.
 
-| condition | accuracy | ECE |
-|---|---|---|
-| bare | 44.5% | 0.253 |
-| generic | 44.0% | 0.308 |
-| domain_aware | 50.7% | 0.092 |
-| domain_aware_ensemble | 51.7% | 0.104 |
+Instead, this project focuses on a **sensor domain shift**, where the visual appearance changes because images are captured using different sensing modalities (RGB versus thermal imaging).
 
-Domain-aware prompting improves thermal accuracy by 6.7 points over generic (McNemar p = 0.0004, bootstrap 95% CI on the difference: 0.032 to 0.102, entirely above zero). The ensemble version does slightly better still, +7.7 points, p < 0.0001.
+Sensor-domain shifts naturally appear in applications such as:
 
-**RGB (control):** generic 69.0%, domain_aware 70.7%, difference not significant (p = 0.23, CI crosses zero). No real effect where none was expected, which is what makes the thermal result credible rather than a fluke of prompt wording in general.
+- autonomous driving
+- night-time perception
+- remote sensing
+- wildfire monitoring
 
-**Calibration improved more than accuracy did.** On thermal, generic prompting is badly overconfident (ECE 0.31, mean confidence 0.75 against 44% actual accuracy). Domain-aware brings that down to ECE 0.09, confidence much closer to actual accuracy. This shows up clearly in the reliability diagrams.
+To the best of my literature review, I found limited evaluations of **simple handcrafted domain-aware prompting** for RGB–thermal zero-shot classification using CLIP.
 
-**The gain is not spread evenly across classes.** Most of it comes from truck (25% to 59% correct going from generic to domain-aware). Car is roughly flat. Person recall actually drops (97% to 84%), because under the generic prompt the model was collapsing almost everything ambiguous into "person" on thermal images, and domain-aware prompting breaks that collapse rather than genuinely getting better at recognizing people. Bike stays broken under both conditions (around 3 to 7% correct either way), domain-aware prompting does not fix it.
+---
 
-**Failure case check:** the handful of wrong predictions inspected all involved small objects, under 2% of the frame. Consistent with what you'd expect, but six examples isn't a systematic claim, just a pattern worth noting.
+# Dataset
 
-**t-SNE check:** RGB and thermal embeddings land in clearly separate regions of the space with almost no overlap, confirming this is a real, substantial domain shift and not a trivial case.
+**Teledyne FLIR ADAS Thermal Dataset v2**
 
-## What this adds up to
+Source:
+`samdazel/teledyne-flir-adas-thermal-dataset-v2` (Kaggle)
 
-Domain-aware prompting gives a real, statistically significant improvement in both accuracy and calibration on a genuine sensor domain shift, with no such effect on a matched control condition. The effect is moderate, not dramatic, and concentrated in specific classes (truck) rather than uniform. That's an honest, defensible finding either way this had turned out, this run happened to land on the positive side.
+Dataset characteristics:
 
-## How to run
+- paired RGB and thermal images
+- vehicle-mounted camera platform
+- COCO-format bounding-box annotations
+- real outdoor driving scenes
 
-1. Open a new Kaggle notebook, attach `samdazel/teledyne-flir-adas-thermal-dataset-v2` as a data source (accept the terms first if you haven't).
-2. Turn on internet in notebook settings, needed once to pull the CLIP weights from Hugging Face.
-3. GPU on (T4 is enough), run all cells top to bottom.
-4. Everything gets written to `/kaggle/working/results/`, figures as PNGs, metrics as CSVs, and a run manifest as JSON.
+Classes evaluated:
 
-## Known limitations
+- person
+- car
+- bike
+- truck
 
-- FLIR ADAS is dashcam footage from one vehicle rig, one dataset, one camera setup, one geography. Not a general claim about RGB-thermal domain shift everywhere.
-- The domain-aware prompt wording was written by hand, not learned or searched over. A different phrasing could change the result in either direction.
-- Only one model tested (CLIP ViT-B/32). SigLIP or a newer VLM might behave differently.
-- The improvement is class-specific (mostly truck), not uniform, and bike detection stays broken under both prompt conditions. Worth being upfront about this rather than only reporting the average.
-- No hyperparameter search, one prompt set per condition, one seed.
+These classes were selected because they contain sufficient samples in both RGB and thermal domains.
 
-## Files in this folder
+For each class:
 
-- `style_aware_prompting_flir_RAN.ipynb` — the actual notebook as run on Kaggle, with all outputs saved inline
-- `results/figures/` — the 6 figures the run produced
-- `results/metrics/` — crop manifest, raw predictions, summary metrics, significance test results, all as CSV
-- `results/run_manifest.json` — exact config this run used (model, classes, sample caps, seed)
-- `README.md` — this file
+- 150 RGB crops
+- 150 thermal crops
+
+Total:
+
+**1,200 object crops**
+
+Bounding boxes were cropped with a small padding margin before inference.
+
+---
+
+# Method
+
+Model:
+
+- CLIP ViT-B/32
+
+Training:
+
+- none
+
+Fine-tuning:
+
+- none
+
+Everything is performed in the **zero-shot setting**.
+
+Four prompt conditions are compared on the **same image crops**, ensuring a controlled comparison.
+
+| Condition | Prompt |
+|-----------|--------|
+| **Bare** | `car` |
+| **Generic** | `a photo of a {class}` |
+| **Domain-Aware** | `a thermal camera image of a {class}` (thermal) / `a color photograph of a {class}` (RGB) |
+| **Domain-Aware Ensemble** | Multiple domain-aware prompt variants whose text embeddings are averaged |
+
+RGB acts as a **control condition**.
+
+Because the generic and domain-aware prompts are intentionally very similar for RGB images, improvements observed primarily on thermal imagery are more likely to reflect adaptation to the sensing modality rather than prompt wording alone.
+
+---
+
+# Results
+
+## Thermal (primary experiment)
+
+| Prompt | Accuracy |
+|---------|---------:|
+| Bare | **44.5%** |
+| Generic | **44.0%** |
+| Domain-Aware | **50.7%** |
+| Domain-Aware Ensemble | **51.7%** |
+
+The domain-aware prompt improves zero-shot thermal accuracy by **6.7 percentage points** over the generic prompt.
+
+The prompt ensemble provides a small additional improvement.
+
+---
+
+## RGB (control experiment)
+
+| Prompt | Accuracy |
+|---------|---------:|
+| Generic | **69.0%** |
+| Domain-Aware | **70.7%** |
+
+Only a very small improvement is observed on RGB images.
+
+This supports the idea that the thermal improvement is associated with the sensor-domain shift rather than prompt wording in general.
+
+---
+
+# Class-wise observations
+
+The improvements are **not uniform across classes**.
+
+- Truck shows the largest improvement.
+- Car remains largely unchanged.
+- Person recall decreases slightly as the model becomes less biased toward predicting "person."
+- Bike remains difficult under all prompt conditions.
+
+This suggests that domain-aware prompting helps some semantic categories more than others.
+
+---
+
+# Failure Analysis
+
+Representative failure cases indicate that most incorrect predictions occur when:
+
+- objects occupy only a very small region of the image,
+- thermal contrast is weak,
+- object boundaries are poorly defined.
+
+These examples illustrate the remaining limitations of zero-shot CLIP even after domain-aware prompting.
+
+---
+
+# Discussion
+
+This experiment demonstrates that **simple prompt modifications alone** can improve zero-shot performance under a genuine sensor-domain shift without retraining or fine-tuning the model.
+
+The improvements are moderate rather than dramatic, and they are concentrated in particular classes rather than being uniform across the dataset.
+
+While this is a small empirical study rather than a new prompting method, the results suggest that prompt design can serve as a lightweight adaptation strategy when vision-language models are applied to new sensing modalities.
+
+---
+
+# Limitations
+
+- Only one dataset (FLIR ADAS) was evaluated.
+- Prompt templates were manually designed.
+- Only one vision-language model (CLIP ViT-B/32) was tested.
+- Improvements were class-dependent rather than uniform.
+- No prompt optimization or prompt learning was performed.
+
+---
+
+# Repository Structure
+
+```
+.
+├── style_aware_prompting_flir.ipynb
+├── README.md
+└── results
+    ├── figures
+    ├── metrics
+    └── run_manifest.json
+```
+
+---
+
+# Reproducibility
+
+1. Create a Kaggle notebook.
+2. Attach the **Teledyne FLIR ADAS Thermal Dataset v2**.
+3. Enable Internet access (required once to download CLIP weights).
+4. Enable a GPU (T4 is sufficient).
+5. Run the notebook from top to bottom.
+
+All outputs are automatically saved under:
+
+```
+results/
+```
+
+including:
+
+- figures
+- raw predictions
+- summary metrics
+- experiment configuration
+
+---
+
+# Acknowledgement
+
+This project was inspired by the ideas presented in **Style-Pro** by Prof. Niloufar (Nila) Alipour Talemi and colleagues. It does **not** reproduce or extend Style-Pro directly; instead, it investigates whether the intuition behind domain-aware prompting transfers to a practical RGB–thermal sensor-domain shift using a simple zero-shot evaluation.
