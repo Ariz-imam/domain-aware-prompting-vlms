@@ -216,6 +216,4 @@ including:
 
 ---
 
-# Acknowledgement
 
-This project was inspired by the ideas presented in **Style-Pro** by Prof. Niloufar (Nila) Alipour Talemi and colleagues. It does **not** reproduce or extend Style-Pro directly; instead, it investigates whether the intuition behind domain-aware prompting transfers to a practical RGB–thermal sensor-domain shift using a simple zero-shot evaluation.
